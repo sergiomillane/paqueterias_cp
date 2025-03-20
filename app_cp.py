@@ -31,6 +31,7 @@ def cargar_paqueterias():
         if os.path.exists(ruta):
             df = pd.read_excel(ruta, sheet_name=hoja)
             df.rename(columns=dic, inplace=True, errors="ignore")
+            df.columns = df.columns.str.strip().str.upper()  # Asegurar consistencia en nombres
             if "CODIGO POSTAL" in df.columns:
                 paqueterias[nombre] = df[["CODIGO POSTAL"]]
     return paqueterias
@@ -38,10 +39,17 @@ def cargar_paqueterias():
 @st.cache_data
 def cargar_tabla_cp_estado():
     """ Carga la tabla que asocia códigos postales con estados """
-    ruta = os.path.join(data_path, "codigos_postales_estados.xlsx")  # Asegúrate de tener este archivo
+    ruta = os.path.join(data_path, "codigos_postales_estados.xlsx")
     if os.path.exists(ruta):
-        return pd.read_excel(ruta)  # Debe tener columnas: 'CODIGO POSTAL' y 'ESTADO'
-    return pd.DataFrame()
+        df = pd.read_excel(ruta)
+        df.columns = df.columns.str.strip().str.upper()  # Asegurar consistencia en nombres
+        if "CODIGO POSTAL" not in df.columns or "ESTADO" not in df.columns:
+            st.error("⚠️ El archivo `codigos_postales_estados.xlsx` debe contener las columnas 'CODIGO POSTAL' y 'ESTADO'.")
+            return pd.DataFrame()
+        return df
+    else:
+        st.error(f"⚠️ No se encontró el archivo: {ruta}")
+        return pd.DataFrame()
 
 @st.cache_data
 def cargar_estado(archivo_geojson):
@@ -67,27 +75,19 @@ m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
 # Procesar solo si hay código postal ingresado
 if cp_manual:
-    # Buscar en qué paqueterías está disponible
     paqueterias_con_cobertura = [nombre for nombre, df in paqueterias.items() if cp_manual in df["CODIGO POSTAL"].astype(str).values]
 
     if paqueterias_con_cobertura:
-        # Buscar el estado correspondiente al CP
         estado_fila = tabla_cp_estado[tabla_cp_estado["CODIGO POSTAL"].astype(str) == cp_manual]
 
         if not estado_fila.empty:
-            estado = estado_fila["ESTADO"].values[0]  # Nombre del estado asociado
-
-            # Verificar si el estado tiene un GeoJSON
+            estado = estado_fila["ESTADO"].values[0]
             estado_archivo = archivos_geojson.get(estado)
 
             if estado_archivo:
-                # Cargar solo el estado relevante
                 gdf_estado = cargar_estado(estado_archivo)
-
-                # Filtrar códigos postales de la paquetería seleccionada dentro del estado
                 gdf_paqueteria = gdf_estado[gdf_estado["d_codigo"].astype(str).isin(paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str))]
 
-                # Agregar la cobertura al mapa
                 folium.GeoJson(
                     gdf_paqueteria,
                     name=f"Cobertura {paqueteria_seleccionada}",
@@ -99,7 +99,6 @@ if cp_manual:
                     }
                 ).add_to(m)
 
-                # Agregar marcador del CP ingresado
                 gdf_cp_manual = gdf_estado[gdf_estado["d_codigo"].astype(str) == cp_manual]
                 if not gdf_cp_manual.empty:
                     centroide = gdf_cp_manual.geometry.to_crs(epsg=4326).centroid.iloc[0]

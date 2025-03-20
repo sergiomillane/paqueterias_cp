@@ -36,13 +36,22 @@ def cargar_paqueterias():
     return paqueterias
 
 @st.cache_data
+def cargar_tabla_cp_estado():
+    """ Carga la tabla que asocia códigos postales con estados """
+    ruta = os.path.join(data_path, "codigos_postales_estados.xlsx")  # Asegúrate de tener este archivo
+    if os.path.exists(ruta):
+        return pd.read_excel(ruta)  # Debe tener columnas: 'CODIGO POSTAL' y 'ESTADO'
+    return pd.DataFrame()
+
+@st.cache_data
 def cargar_estado(archivo_geojson):
     """ Carga solo el GeoJSON del estado relevante """
     return gpd.read_file(archivo_geojson)
 
-# Cargar lista de estados y paqueterías
+# Cargar lista de estados, paqueterías y tabla de CP-Estado
 archivos_geojson = listar_archivos_geojson()
 paqueterias = cargar_paqueterias()
+tabla_cp_estado = cargar_tabla_cp_estado()
 
 # Interfaz en Streamlit
 st.title("Mapa de Cobertura de Paqueterías")
@@ -62,41 +71,47 @@ if cp_manual:
     paqueterias_con_cobertura = [nombre for nombre, df in paqueterias.items() if cp_manual in df["CODIGO POSTAL"].astype(str).values]
 
     if paqueterias_con_cobertura:
-        # Determinar qué estado cargar según los primeros 2 dígitos del CP
-        estado_clave = cp_manual[:2]  # Ejemplo: "81236" → "81"
-        estado_archivo = next((f for f in archivos_geojson if f.startswith(estado_clave)), None)
+        # Buscar el estado correspondiente al CP
+        estado_fila = tabla_cp_estado[tabla_cp_estado["CODIGO POSTAL"].astype(str) == cp_manual]
 
-        if estado_archivo:
-            # Cargar solo el estado relevante
-            gdf_estado = cargar_estado(archivos_geojson[estado_archivo])
+        if not estado_fila.empty:
+            estado = estado_fila["ESTADO"].values[0]  # Nombre del estado asociado
 
-            # Filtrar códigos postales de la paquetería seleccionada dentro del estado
-            gdf_paqueteria = gdf_estado[gdf_estado["d_codigo"].astype(str).isin(paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str))]
+            # Verificar si el estado tiene un GeoJSON
+            estado_archivo = archivos_geojson.get(estado)
 
-            # Agregar la cobertura al mapa
-            folium.GeoJson(
-                gdf_paqueteria,
-                name=f"Cobertura {paqueteria_seleccionada}",
-                style_function=lambda x: {
-                    'fillColor': 'blue',
-                    'color': 'black',
-                    'weight': 0.5,
-                    'fillOpacity': 0.3
-                }
-            ).add_to(m)
+            if estado_archivo:
+                # Cargar solo el estado relevante
+                gdf_estado = cargar_estado(estado_archivo)
 
-            # Agregar marcador del CP ingresado
-            gdf_cp_manual = gdf_estado[gdf_estado["d_codigo"].astype(str) == cp_manual]
-            if not gdf_cp_manual.empty:
-                centroide = gdf_cp_manual.geometry.to_crs(epsg=4326).centroid.iloc[0]
-                folium.Marker(
-                    location=[centroide.y, centroide.x],
-                    popup=f"Código Postal {cp_manual}\nCobertura en: {', '.join(paqueterias_con_cobertura)}",
-                    icon=folium.Icon(color="red", icon="info-sign")
+                # Filtrar códigos postales de la paquetería seleccionada dentro del estado
+                gdf_paqueteria = gdf_estado[gdf_estado["d_codigo"].astype(str).isin(paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str))]
+
+                # Agregar la cobertura al mapa
+                folium.GeoJson(
+                    gdf_paqueteria,
+                    name=f"Cobertura {paqueteria_seleccionada}",
+                    style_function=lambda x: {
+                        'fillColor': 'blue',
+                        'color': 'black',
+                        'weight': 0.5,
+                        'fillOpacity': 0.3
+                    }
                 ).add_to(m)
-        else:
-            st.error("⚠️ No se encontró un estado que coincida con el código postal ingresado.")
 
+                # Agregar marcador del CP ingresado
+                gdf_cp_manual = gdf_estado[gdf_estado["d_codigo"].astype(str) == cp_manual]
+                if not gdf_cp_manual.empty:
+                    centroide = gdf_cp_manual.geometry.to_crs(epsg=4326).centroid.iloc[0]
+                    folium.Marker(
+                        location=[centroide.y, centroide.x],
+                        popup=f"Código Postal {cp_manual}\nCobertura en: {', '.join(paqueterias_con_cobertura)}",
+                        icon=folium.Icon(color="red", icon="info-sign")
+                    ).add_to(m)
+            else:
+                st.error(f"⚠️ No se encontró un GeoJSON para el estado '{estado}' asociado al CP {cp_manual}.")
+        else:
+            st.error(f"⚠️ No se encontró un estado para el código postal {cp_manual}.")
     else:
         st.error(f"⚠️ El código postal {cp_manual} no tiene cobertura en ninguna paquetería.")
 

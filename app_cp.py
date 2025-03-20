@@ -8,13 +8,12 @@ from streamlit_folium import folium_static
 # Definir la ruta de la carpeta de datos
 data_path = os.path.join(os.getcwd(), "data")
 
-# Cargar archivos GeoJSON y Excel solo una vez
+# Cargar archivos GeoJSON en caché (sin generar mapas)
 @st.cache_data
 def cargar_geojson():
     estados_path = os.path.join(data_path, "Estados")
     archivos_geojson = [os.path.join(estados_path, f) for f in os.listdir(estados_path) if f.endswith(".geojson")]
-    gdf_lista = [gpd.read_file(archivo) for archivo in archivos_geojson]
-    return gpd.GeoDataFrame(pd.concat(gdf_lista, ignore_index=True))
+    return {archivo: gpd.read_file(archivo) for archivo in archivos_geojson}
 
 @st.cache_data
 def cargar_excel(nombre_archivo, hoja=None):
@@ -45,31 +44,9 @@ def cargar_paqueterias():
             paqueterias[nombre] = df[["CODIGO POSTAL"]]
     return paqueterias
 
-# Cargar datos solo una vez
-gdf_total = cargar_geojson()
+# Cargar datos en caché
+geojson_data = cargar_geojson()
 paqueterias = cargar_paqueterias()
-
-# Crear mapas precargados con las coberturas de cada paquetería
-@st.cache_data
-def generar_mapas():
-    mapas = {}
-    for nombre, df in paqueterias.items():
-        m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
-        gdf_paqueteria = gdf_total[gdf_total["d_codigo"].astype(str).isin(df["CODIGO POSTAL"].astype(str))]
-        folium.GeoJson(
-            gdf_paqueteria,
-            name=f"Cobertura {nombre}",
-            style_function=lambda x: {
-                'fillColor': 'blue',
-                'color': 'black',
-                'weight': 0.5,
-                'fillOpacity': 0.3
-            }
-        ).add_to(m)
-        mapas[nombre] = m
-    return mapas
-
-mapas_paqueterias = generar_mapas()
 
 # Interfaz en Streamlit
 st.title("Mapa de Cobertura de Paqueterías")
@@ -80,10 +57,28 @@ paqueteria_seleccionada = st.radio("Selecciona una paquetería:", list(paqueteri
 # Ingreso de Código Postal
 cp_manual = st.text_input("Ingresa un Código Postal:")
 
-# Mostrar el mapa precargado
-m = mapas_paqueterias[paqueteria_seleccionada]
+# Crear mapa base vacío
+m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
-# Si hay código postal, solo agregar el marcador sin recargar el mapa
+# Agregar cobertura de la paquetería seleccionada dinámicamente
+if paqueteria_seleccionada in paqueterias:
+    gdf_total = gpd.GeoDataFrame(pd.concat(geojson_data.values(), ignore_index=True))
+    gdf_paqueteria = gdf_total[gdf_total["d_codigo"].astype(str).isin(
+        paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str)
+    )]
+
+    folium.GeoJson(
+        gdf_paqueteria,
+        name=f"Cobertura {paqueteria_seleccionada}",
+        style_function=lambda x: {
+            'fillColor': 'blue',
+            'color': 'black',
+            'weight': 0.5,
+            'fillOpacity': 0.3
+        }
+    ).add_to(m)
+
+# Si hay código postal, solo agregar el marcador sin regenerar el mapa
 if cp_manual:
     gdf_cp_manual = gdf_total[gdf_total["d_codigo"].astype(str) == cp_manual]
     if not gdf_cp_manual.empty:

@@ -34,11 +34,11 @@ def cargar_excel(nombre_archivo, hoja=None):
 # Cargar coberturas de paqueterías con validación
 paqueterias = {}
 archivos = [
-    ("Estafeta", "COBERTURA_ESTAFETA.xlsx", None),
-    ("Paquete_Express", "COBERTURA_PAQUETEXPRESS.xlsx", "COBERTURA COMERCIAL"),
-    ("JyT", "COBERTURA_J&T.xlsx", "CP"),
+    ("Estafeta", "COBERTURA_ESTAFETA.xlsx", "Hoja1"),
+    ("Paquete_Express", "COBERTURA_PAQUETEXPRESS.xlsx", "Hoja1"),
+    ("JyT", "COBERTURA_J&T.xlsx", "Hoja1"),
     ("Almex", "COBERTURA_ALMEX.xlsx", "Hoja1"),
-    ("PMM", "COBERTURA_PMM.xlsx", None)
+    ("PMM", "COBERTURA_PMM.xlsx", "Hoja1")
 ]
 
 for nombre, archivo, hoja in archivos:

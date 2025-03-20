@@ -43,16 +43,21 @@ cp_manual = st.text_input("Ingresa un Código Postal:")
 
 if cp_manual:
     # Filtrar cobertura de la paquetería seleccionada
-gdf_paqueteria = gdf_total[gdf_total["d_codigo"].astype(str).isin(paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str))]
+    gdf_paqueteria = gdf_total[gdf_total["d_codigo"].astype(str).isin(
+        paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str)
+    )]
 
     # Verificar paqueterías disponibles
-paqueterias_con_cobertura = [nombre for nombre, df in paqueterias.items() if cp_manual in df["CODIGO POSTAL"].astype(str).values]
-    
+    paqueterias_con_cobertura = [
+        nombre for nombre, df in paqueterias.items()
+        if cp_manual in df["CODIGO POSTAL"].astype(str).values
+    ]
+
     # Crear mapa
-m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
+    m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
     # Agregar cobertura al mapa
-folium.GeoJson(
+    folium.GeoJson(
         gdf_paqueteria,
         name=f"Cobertura {paqueteria_seleccionada}",
         style_function=lambda x: {
@@ -74,7 +79,7 @@ folium.GeoJson(
         ).add_to(m)
 
     # Mostrar mapa en Streamlit
-folium_static(m)
+    folium_static(m)
 
     # Mostrar paqueterías con cobertura
-st.write(f"El código postal {cp_manual} tiene cobertura en: {', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna paquetería encontrada'}")
+    st.write(f"El código postal {cp_manual} tiene cobertura en: {', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna paquetería encontrada'}")

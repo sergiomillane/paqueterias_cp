@@ -13,9 +13,12 @@ data_path = os.path.join(os.getcwd(), "data")
 # Cargar archivos GeoJSON desde la carpeta "Estados"
 @st.cache_data
 def cargar_geojson():
+    data_path = os.path.join(os.getcwd(), "data")
+    estados_path = os.path.join(data_path, "Estados")
     archivos_geojson = [os.path.join(estados_path, f) for f in os.listdir(estados_path) if f.endswith(".geojson")]
     gdf_lista = [gpd.read_file(archivo) for archivo in archivos_geojson]
     return gpd.GeoDataFrame(pd.concat(gdf_lista, ignore_index=True))
+
 
 gdf_total = cargar_geojson()
 

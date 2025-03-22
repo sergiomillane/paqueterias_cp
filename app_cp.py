@@ -80,10 +80,14 @@ cp_manual = st.text_input("Ingresa un Código Postal:")
 if cp_manual:
     cp_manual = cp_manual.strip()
 
-    # Convertir columna una sola vez para optimizar
+    # Convertir columna una sola vez
     gdf_total["d_codigo"] = gdf_total["d_codigo"].astype(str)
 
-    # Filtrar solo el CP ingresado
+    # --- Filtrar geojson solo con los CP de esa paquetería
+    codigos_paq = paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str).unique()
+    gdf_paqueteria = gdf_total[gdf_total["d_codigo"].isin(codigos_paq)]
+
+    # --- Filtrar CP manual ingresado
     gdf_cp_manual = gdf_total[gdf_total["d_codigo"] == cp_manual]
 
     if gdf_cp_manual.empty:
@@ -98,19 +102,31 @@ if cp_manual:
         # Crear mapa
         m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
-        # Sombrear la zona del CP ingresado
+        # 🔹 Cobertura total de la paquetería
         folium.GeoJson(
-            gdf_cp_manual,
-            name=f"Zona CP {cp_manual}",
+            gdf_paqueteria,
+            name=f"Cobertura {paqueteria_seleccionada}",
             style_function=lambda x: {
                 'fillColor': 'blue',
                 'color': 'black',
                 'weight': 0.5,
-                'fillOpacity': 0.4
+                'fillOpacity': 0.2
             }
         ).add_to(m)
 
-        # Agregar marcador al centro del polígono
+        # 🔸 Sombreado más fuerte del CP seleccionado
+        folium.GeoJson(
+            gdf_cp_manual,
+            name=f"Código Postal {cp_manual}",
+            style_function=lambda x: {
+                'fillColor': 'red',
+                'color': 'darkred',
+                'weight': 1,
+                'fillOpacity': 0.5
+            }
+        ).add_to(m)
+
+        # 🔹 Marcador en el centro del CP
         centroide = gdf_cp_manual.geometry.to_crs(epsg=4326).centroid.iloc[0]
         folium.Marker(
             location=[centroide.y, centroide.x],

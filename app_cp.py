@@ -5,11 +5,11 @@ import os
 import pandas as pd
 from streamlit_folium import folium_static
 
-# ================== CONFIGURACIÓN DE RUTA =====================
+# Configuracion de ruta
 data_path = os.path.join(os.getcwd(), "data")
 estados_path = os.path.join(data_path, "Estados")
 
-# ================== FUNCIÓN: Cargar GeoJSON de forma optimizada =====================
+# Cacheando la data
 @st.cache_data
 def cargar_geojson_simplificado():
     archivos_geojson = [os.path.join(estados_path, f) for f in os.listdir(estados_path) if f.endswith(".geojson")]
@@ -22,7 +22,7 @@ def cargar_geojson_simplificado():
 
 gdf_total = cargar_geojson_simplificado()
 
-# ================== FUNCIÓN: Cargar Excel =====================
+
 def cargar_excel(nombre_archivo, hoja=None):
     ruta = os.path.join(data_path, "Coberturas_Paqueterias", nombre_archivo)
     if not os.path.exists(ruta):
@@ -38,7 +38,7 @@ def cargar_excel(nombre_archivo, hoja=None):
         st.error(f"⚠️ Error al cargar {nombre_archivo}: {e}")
         return pd.DataFrame()
 
-# ================== Cargar coberturas de paqueterías =====================
+# Cargar coberturas de rutas con validación
 paqueterias = {}
 archivos = [
     ("Estafeta", "COBERTURA_ESTAFETA.xlsx", "Hoja1"),
@@ -59,7 +59,7 @@ for nombre, archivo, hoja in archivos:
     else:
         st.error(f"⚠️ {nombre} no tiene datos válidos.")
 
-# ================== INTERFAZ STREAMLIT =====================
+# Interfaz streamlit
 st.title("📦 Mapa de Cobertura de Paqueterías")
 
 # Selección de paquetería

@@ -5,25 +5,24 @@ import os
 import pandas as pd
 from streamlit_folium import folium_static
 
-# Definir la ruta de la carpeta de datos
+# ================== CONFIGURACIÓN DE RUTA =====================
 data_path = os.path.join(os.getcwd(), "data")
+estados_path = os.path.join(data_path, "Estados")
 
-# Ruta de geojsons\estados_path = os.path.join(data_path, "Estados")
-
-# Cargar archivos GeoJSON desde la carpeta "Estados"
+# ================== FUNCIÓN: Cargar GeoJSON de forma optimizada =====================
 @st.cache_data
-def cargar_geojson():
-    data_path = os.path.join(os.getcwd(), "data")
-    estados_path = os.path.join(data_path, "Estados")
+def cargar_geojson_simplificado():
     archivos_geojson = [os.path.join(estados_path, f) for f in os.listdir(estados_path) if f.endswith(".geojson")]
-    gdf_lista = [gpd.read_file(archivo) for archivo in archivos_geojson]
-    return gpd.GeoDataFrame(pd.concat(gdf_lista, ignore_index=True))
+    gdfs = []
+    for archivo in archivos_geojson:
+        gdf = gpd.read_file(archivo)
+        gdf["geometry"] = gdf["geometry"].simplify(tolerance=0.002, preserve_topology=True)
+        gdfs.append(gdf)
+    return gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True))
 
+gdf_total = cargar_geojson_simplificado()
 
-gdf_total = cargar_geojson()
-
-# Función para cargar archivos Excel con validación
-@st.cache_data
+# ================== FUNCIÓN: Cargar Excel =====================
 def cargar_excel(nombre_archivo, hoja=None):
     ruta = os.path.join(data_path, "Coberturas_Paqueterias", nombre_archivo)
     if not os.path.exists(ruta):
@@ -39,7 +38,7 @@ def cargar_excel(nombre_archivo, hoja=None):
         st.error(f"⚠️ Error al cargar {nombre_archivo}: {e}")
         return pd.DataFrame()
 
-# Cargar coberturas de paqueterías con validación
+# ================== Cargar coberturas de paqueterías =====================
 paqueterias = {}
 archivos = [
     ("Estafeta", "COBERTURA_ESTAFETA.xlsx", "Hoja1"),
@@ -51,25 +50,17 @@ archivos = [
 
 for nombre, archivo, hoja in archivos:
     df = cargar_excel(archivo, hoja)
-    if df.empty:
-        st.error(f"⚠️ {nombre} no tiene datos o falló la carga.")
-    else:
-        paqueterias[nombre] = df
-
-# Renombrar columnas con validación
-dic = {"C.P.": "CODIGO POSTAL", "C.P Destino": "CODIGO POSTAL", "POSTAL": "CODIGO POSTAL"}
-for nombre, df in paqueterias.items():
-    if df.empty:
-        st.error(f"⚠️ {nombre} no tiene datos válidos.")
-    else:
-        df.rename(columns=dic, inplace=True, errors="ignore")
+    if not df.empty:
+        df.rename(columns={"C.P.": "CODIGO POSTAL", "C.P Destino": "CODIGO POSTAL", "POSTAL": "CODIGO POSTAL"}, inplace=True, errors="ignore")
         if "CODIGO POSTAL" in df.columns:
             paqueterias[nombre] = df[["CODIGO POSTAL"]]
         else:
             st.error(f"⚠️ {nombre} no contiene la columna 'CODIGO POSTAL'.")
+    else:
+        st.error(f"⚠️ {nombre} no tiene datos válidos.")
 
-# Interfaz en Streamlit
-st.title("Mapa de Cobertura de Paqueterías")
+# ================== INTERFAZ STREAMLIT =====================
+st.title("📦 Mapa de Cobertura de Paqueterías")
 
 # Selección de paquetería
 paqueteria_seleccionada = st.selectbox("Selecciona una paquetería:", list(paqueterias.keys()))
@@ -77,64 +68,47 @@ paqueteria_seleccionada = st.selectbox("Selecciona una paquetería:", list(paque
 # Ingreso de Código Postal
 cp_manual = st.text_input("Ingresa un Código Postal:")
 
-if cp_manual:
-    cp_manual = cp_manual.strip()
+if cp_manual and paqueteria_seleccionada:
+    codigos_cp = paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str)
+    
+    # Combina los CP de cobertura con el CP manual para evitar errores
+    codigos_a_mostrar = pd.Series(codigos_cp.tolist() + [cp_manual]).dropna().unique()
 
-    # Convertir columna una sola vez
-    gdf_total["d_codigo"] = gdf_total["d_codigo"].astype(str)
+    gdf_paqueteria = gdf_total[gdf_total["d_codigo"].astype(str).isin(codigos_a_mostrar)]
 
-    # --- Filtrar geojson solo con los CP de esa paquetería
-    codigos_paq = paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str).unique()
-    gdf_paqueteria = gdf_total[gdf_total["d_codigo"].isin(codigos_paq)]
+    # Verificar en qué paqueterías hay cobertura
+    paqueterias_con_cobertura = [
+        nombre for nombre, df in paqueterias.items()
+        if cp_manual in df["CODIGO POSTAL"].astype(str).values
+    ]
 
-    # --- Filtrar CP manual ingresado
-    gdf_cp_manual = gdf_total[gdf_total["d_codigo"] == cp_manual]
+    # Crear mapa
+    m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
 
-    if gdf_cp_manual.empty:
-        st.warning("❌ El código postal ingresado no se encuentra en el mapa.")
-    else:
-        # Validar cobertura
-        paqueterias_con_cobertura = [
-            nombre for nombre, df in paqueterias.items()
-            if cp_manual in df["CODIGO POSTAL"].astype(str).values
-        ]
+    # Agregar capa de cobertura con sombreado optimizado
+    folium.GeoJson(
+        gdf_paqueteria,
+        name=f"Cobertura {paqueteria_seleccionada}",
+        style_function=lambda x: {
+            'fillColor': 'blue',
+            'color': 'black',
+            'weight': 0.3,
+            'fillOpacity': 0.2
+        }
+    ).add_to(m)
 
-        # Crear mapa
-        m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
-
-        # 🔹 Cobertura total de la paquetería
-        folium.GeoJson(
-            gdf_paqueteria,
-            name=f"Cobertura {paqueteria_seleccionada}",
-            style_function=lambda x: {
-                'fillColor': 'blue',
-                'color': 'black',
-                'weight': 0.5,
-                'fillOpacity': 0.2
-            }
-        ).add_to(m)
-
-        # 🔸 Sombreado más fuerte del CP seleccionado
-        folium.GeoJson(
-            gdf_cp_manual,
-            name=f"Código Postal {cp_manual}",
-            style_function=lambda x: {
-                'fillColor': 'red',
-                'color': 'darkred',
-                'weight': 1,
-                'fillOpacity': 0.5
-            }
-        ).add_to(m)
-
-        # 🔹 Marcador en el centro del CP
+    # Agregar marcador del CP ingresado
+    gdf_cp_manual = gdf_total[gdf_total["d_codigo"].astype(str) == cp_manual]
+    if not gdf_cp_manual.empty:
         centroide = gdf_cp_manual.geometry.to_crs(epsg=4326).centroid.iloc[0]
         folium.Marker(
             location=[centroide.y, centroide.x],
-            popup=f"CP {cp_manual}\nCobertura: {', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna'}",
+            popup=f"Código Postal {cp_manual}\nCobertura en: {', '.join(paqueterias_con_cobertura)}",
             icon=folium.Icon(color="red", icon="info-sign")
         ).add_to(m)
 
-        folium_static(m)
+    # Mostrar mapa
+    folium_static(m)
 
-        # Mostrar texto con cobertura
-        st.success(f"✅ El código postal **{cp_manual}** tiene cobertura en: **{', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna'}**")
+    # Mostrar info adicional
+    st.write(f"📍 El código postal **{cp_manual}** tiene cobertura en: {', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna paquetería encontrada'}")

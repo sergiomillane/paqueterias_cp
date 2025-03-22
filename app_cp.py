@@ -78,44 +78,47 @@ paqueteria_seleccionada = st.selectbox("Selecciona una paquetería:", list(paque
 cp_manual = st.text_input("Ingresa un Código Postal:")
 
 if cp_manual:
-    # Filtrar cobertura de la paquetería seleccionada
-    gdf_paqueteria = gdf_total[gdf_total["d_codigo"].astype(str).isin(
-        paqueterias[paqueteria_seleccionada]["CODIGO POSTAL"].astype(str)
-    )]
+    cp_manual = cp_manual.strip()
 
-    # Verificar paqueterías disponibles
-    paqueterias_con_cobertura = [
-        nombre for nombre, df in paqueterias.items()
-        if cp_manual in df["CODIGO POSTAL"].astype(str).values
-    ]
+    # Convertir columna una sola vez para optimizar
+    gdf_total["d_codigo"] = gdf_total["d_codigo"].astype(str)
 
-    # Crear mapa
-    m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
+    # Filtrar solo el CP ingresado
+    gdf_cp_manual = gdf_total[gdf_total["d_codigo"] == cp_manual]
 
-    # Agregar cobertura al mapa
-    folium.GeoJson(
-        gdf_paqueteria,
-        name=f"Cobertura {paqueteria_seleccionada}",
-        style_function=lambda x: {
-            'fillColor': 'blue',
-            'color': 'black',
-            'weight': 0.5,
-            'fillOpacity': 0.3
-        }
-    ).add_to(m)
+    if gdf_cp_manual.empty:
+        st.warning("❌ El código postal ingresado no se encuentra en el mapa.")
+    else:
+        # Validar cobertura
+        paqueterias_con_cobertura = [
+            nombre for nombre, df in paqueterias.items()
+            if cp_manual in df["CODIGO POSTAL"].astype(str).values
+        ]
 
-    # Marcar ubicación del Código Postal
-    gdf_cp_manual = gdf_total[gdf_total["d_codigo"].astype(str) == cp_manual]
-    if not gdf_cp_manual.empty:
+        # Crear mapa
+        m = folium.Map(location=[23.6345, -102.5528], zoom_start=5)
+
+        # Sombrear la zona del CP ingresado
+        folium.GeoJson(
+            gdf_cp_manual,
+            name=f"Zona CP {cp_manual}",
+            style_function=lambda x: {
+                'fillColor': 'blue',
+                'color': 'black',
+                'weight': 0.5,
+                'fillOpacity': 0.4
+            }
+        ).add_to(m)
+
+        # Agregar marcador al centro del polígono
         centroide = gdf_cp_manual.geometry.to_crs(epsg=4326).centroid.iloc[0]
         folium.Marker(
             location=[centroide.y, centroide.x],
-            popup=f"Código Postal {cp_manual}\nCobertura en: {', '.join(paqueterias_con_cobertura)}",
+            popup=f"CP {cp_manual}\nCobertura: {', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna'}",
             icon=folium.Icon(color="red", icon="info-sign")
         ).add_to(m)
 
-    # Mostrar mapa en Streamlit
-    folium_static(m)
+        folium_static(m)
 
-    # Mostrar paqueterías con cobertura
-    st.write(f"El código postal {cp_manual} tiene cobertura en: {', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna paquetería encontrada'}")
+        # Mostrar texto con cobertura
+        st.success(f"✅ El código postal **{cp_manual}** tiene cobertura en: **{', '.join(paqueterias_con_cobertura) if paqueterias_con_cobertura else 'Ninguna'}**")
